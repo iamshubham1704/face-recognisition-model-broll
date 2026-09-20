@@ -73,9 +73,9 @@
           <p class="hint">Higher = stricter (fewer false positives). Lower = more matches.</p>
         </div>
         <div class="control">
-          <label for="sample-every">SCAN EVERY <output id="sample-value">2 frames</output></label>
-          <input id="sample-every" name="sample_every" type="range" min="1" max="15" step="1" value="2">
-          <p class="hint">1 = every frame (most accurate). Higher = faster, may miss some.</p>
+          <label for="scan-fps">SCAN RATE <output id="scan-fps-value">2 fps</output></label>
+          <input id="scan-fps" name="scan_fps" type="range" min="1" max="4" step="1" value="2">
+          <p class="hint">Frames analyzed per second of video, regardless of the source frame rate. Higher = more accurate, slower.</p>
         </div>
         <div class="control">
           <label for="det-conf">FACE DETECT CONF <output id="det-conf-value">0.70</output></label>

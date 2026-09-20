@@ -9,8 +9,8 @@ const videosInput     = document.querySelector('#videos');
 const fileList        = document.querySelector('#file-list');
 const thresholdEl     = document.querySelector('#threshold');
 const thresholdVal    = document.querySelector('#threshold-value');
-const sampleEvery     = document.querySelector('#sample-every');
-const sampleVal       = document.querySelector('#sample-value');
+const scanFpsEl       = document.querySelector('#scan-fps');
+const scanFpsVal      = document.querySelector('#scan-fps-value');
 const detConfEl       = document.querySelector('#det-conf');
 const detConfVal      = document.querySelector('#det-conf-value');
 const progressSec     = document.querySelector('#progress');
@@ -28,9 +28,8 @@ const statusText      = document.querySelector('#status-text');
 thresholdEl.addEventListener('input', () => {
   thresholdVal.textContent = parseFloat(thresholdEl.value).toFixed(2);
 });
-sampleEvery.addEventListener('input', () => {
-  const v = sampleEvery.value;
-  sampleVal.textContent = `${v} frame${v === '1' ? '' : 's'}`;
+scanFpsEl.addEventListener('input', () => {
+  scanFpsVal.textContent = `${scanFpsEl.value} fps`;
 });
 detConfEl.addEventListener('input', () => {
   detConfVal.textContent = parseFloat(detConfEl.value).toFixed(2);
@@ -295,7 +294,7 @@ function renderResults(data) {
         <p class="eyebrow">SEARCH COMPLETE</p>
         <h2>${esc(names)}</h2>
       </div>
-      <div class="meta">Threshold ${data.threshold ?? 0.50} · Every ${data.sampleEvery ?? 2} frames</div>
+      <div class="meta">Threshold ${data.threshold ?? 0.50} · ${data.scanFps ?? 2} fps scan rate</div>
     </div>
     ${statsHtml}
     ${cards}`;

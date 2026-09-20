@@ -45,6 +45,7 @@ run.bat
 - Annotated video download with labelled, color-coded bounding boxes per character
 - Search for multiple characters at once — add as many reference photo + name rows as you need
 - Thumbnails are the whole video frame (not a face crop), kept at native resolution and encoded as lossless PNG — no stretching, no compression artifacts
+- Scan rate is capped to 1-4 analyzed frames per second of *video time* (not raw frame count), so a 60fps clip doesn't get analyzed 15x more than a 4fps one — this plus a benchmarked CPU thread count cut real scan time by ~3-10x over naive settings
 
 ## Settings
 
@@ -53,7 +54,7 @@ Match sensitivity, scan rate, and face-detect confidence are adjustable sliders 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | **Match threshold** | 0.50 | Cosine similarity cutoff. Lower = more matches, more false positives. |
-| **Scan interval** | every 2nd frame | How often to sample a frame from the video. |
+| **Scan rate** | 2 fps | Frames analyzed per second of video (1-4), independent of the source video's native frame rate. |
 | **Face detect confidence** | 0.70 | Minimum detection confidence to consider a face at all. |
 | **Gender filter** | on | Blocks opposite-gender candidates using the reference photo's detected gender (InsightFace's built-in gender attribute, run on the same aligned crop the detector already produced). |
 | **Minimum face size** | 32px | Faces smaller than this on their short side are skipped — too small to embed reliably. |

@@ -34,7 +34,7 @@ There is no linter, formatter, or test suite configured — don't invent command
 ### Pipeline shape
 
 1. Build a normalized embedding for **each** reference photo (each must contain exactly one clear face; the larger/best-scoring face is used if multiple are detected) — `ref_ids: list[RefIdentity]`, one per character, each carrying its own `name`.
-2. Open the video with `cv2.VideoCapture`, iterate frames, run face detection **once per sampled frame** (`sample_every` frames — not every frame, for speed) regardless of how many characters are being searched for.
+2. Open the video with `cv2.VideoCapture`, iterate frames, run face detection **once per sampled frame** regardless of how many characters are being searched for. Sampling is rate-based, not frame-count-based (see `scan_fps` below).
 3. For each detected face above a detection-confidence gate: embed it **once**, then loop over every reference and cosine-similarity it against that reference's embedding, keeping it as a match for that character if `score >= threshold`. Detection + embedding extraction (the expensive part) never repeats per character — only the cheap dot-product comparison does.
 4. Draw boxes on every frame of an output video (`cv2.VideoWriter`), one color per character (`CHARACTER_COLORS`, cycled), labelled with the character's name and score. Separately, per character, track the single highest-confidence match across the whole video and keep **one** full-frame snapshot for it (see below) — not a per-detection thumbnail gallery.
 
@@ -54,14 +54,35 @@ There is no linter, formatter, or test suite configured — don't invent command
 
 - The thumbnail is **one full video frame per character, not a face crop.** `_process_video` tracks `best_overall_score[ci]`/`best_overall_frame[ci]` across the whole scan per character and keeps the frame with that character's single highest cosine-similarity score (drawn with bounding boxes for **all** characters matched in that frame already annotated — `frame.copy()` is taken once, after the full per-character draw loop, and shared across whichever characters happen to have their best-match frame be this one). `_process_video` returns each character's `thumbnails` as a list with **at most one entry** — the best match for that character — never a gallery of every hit. This was a deliberate change from an earlier version that produced a tight face-only crop (via a now-removed `_tight_crop`/`_content_rect` pair) for every throttled detection: the user explicitly wants the whole body/scene visible, one result per character, and it should be the most confident (least likely to be a false positive) one. Don't reintroduce a per-detection thumbnail loop or a face-only crop without discussing it first.
 - If two characters both match in the same frame, each one's "best" thumbnail may show the same frame (with both boxes drawn, since drawing happens once per frame for all characters before any snapshot is taken) — this is intentional context ("who else is in this shot"), not a bug to fix by re-rendering separate clean frames per character.
-- The best-overall check (`if sampled:` — i.e. `frame_idx % sample_every == 0`) only considers genuinely-detected frames, not frames using `carry` (the stale boxes reused on non-sampled frames) — so a carried box can't "win" the best-match slot on a technicality.
+- The best-overall check (`if sampled:` — i.e. `frame_idx % frame_step == 0`) only considers genuinely-detected frames, not frames using `carry` (the stale boxes reused on non-sampled frames) — so a carried box can't "win" the best-match slot on a technicality.
 - The `detections` list (timeline/chips, per-character `matchCount`) is untouched by this — it still records every throttled (≥0.5s apart, tracked independently per character via `last_det_sec[ci]`) match instance for the timeline, independent of which single frame becomes that character's thumbnail.
 - Thumbnails are encoded as **PNG** (`cv2.imencode(".png", ...)`), which is lossless regardless of the compression-level parameter — PNG's compression level only trades encode speed for file size, never image quality. Do not switch this to JPEG (even at quality 100, JPEG is still lossy) unless payload size becomes a real problem, and if so, raise it with the user first since it's a quality tradeoff.
 - `static/styles.css`'s `.gallery-thumb`/`.live-thumb` use `object-fit: contain` (not `cover`) against a dark background, specifically because the thumbnail is now a whole (likely non-square, e.g. 16:9) frame — `cover` would crop most of it away, defeating the point of showing the whole body/scene. Don't switch back to `cover` for these.
 
 ### Frontend controls (`static/index.html`)
 
-Match sensitivity (`threshold`), scan rate (`sample_every`), and face-detect confidence (`det_conf`) are exposed as manual sliders in the controls row, defaulting to the same values as `main.py`'s `Form()` defaults (0.50 / 2 frames / 0.70). `_clamp_params()` still enforces safe bounds server-side regardless of what the client sends, so a bad/edited value from the browser can't push the pipeline outside sane limits. The gender-filter checkbox is the other user-facing control. The character list itself (photo + name rows, add/remove) is managed in `app.js` via `wireCharacterRow()`/`updateRemoveButtons()` — a freshly-added row is cloned from the first `.character-row` and must be re-wired (event listeners don't survive `cloneNode`).
+Match sensitivity (`threshold`), scan rate (`scan_fps`), and face-detect confidence (`det_conf`) are exposed as manual sliders in the controls row, defaulting to the same values as `main.py`'s `Form()` defaults (0.50 / 2 fps / 0.70). `_clamp_params()` still enforces safe bounds server-side regardless of what the client sends, so a bad/edited value from the browser can't push the pipeline outside sane limits. The gender-filter checkbox is the other user-facing control. The character list itself (photo + name rows, add/remove) is managed in `app.js` via `wireCharacterRow()`/`updateRemoveButtons()` — a freshly-added row is cloned from the first `.character-row` and must be re-wired (event listeners don't survive `cloneNode`).
+
+### Scan rate is fps-based, not frame-count-based (`scan_fps`)
+
+`_process_video` takes `scan_fps` (1-4, default 2 — "analyze N frames per second of video") instead of the old `sample_every` ("analyze every Nth raw frame"). It converts this to an actual frame step once per video: `frame_step = max(1, round(fps / scan_fps))`. This matters because "every 2nd frame" on a 60fps video means 30 analyzed frames/sec — 15x more CPU-bound detection work than the same setting on a 4fps video — so the old frame-count knob silently punished high-fps footage. Rate-based sampling keeps analysis cost proportional to video *duration*, not resolution/frame-rate. If you ever need a frame-count-based knob back for some reason, don't reintroduce it as the primary control — derive it from `scan_fps` and the video's own fps, the same way `frame_step` does now.
+
+### CPU thread tuning for InsightFace (`_load_model`) — benchmark before changing
+
+`_load_model()` pins ONNX Runtime to `intra_op_num_threads=4`, `inter_op_num_threads=1`, `ORT_SEQUENTIAL`. This is **not the obvious "use more cores = faster" choice** — it was benchmarked against real video frames on a 16-core machine and the relationship is a U-shaped curve, not monotonic:
+
+| config | ms/frame |
+|---|---|
+| intra=1 | 1572 |
+| intra=2 | 746 |
+| intra=3 | 521 |
+| **intra=4** | **455** ← fastest |
+| intra=6 | 544 |
+| intra=8 | 632 |
+| untouched ORT default (no sess_options) | 781 |
+| intra=16, inter=16, ORT_PARALLEL ("use all cores") | 1387 ← slower than doing nothing |
+
+buffalo_l's per-model compute graphs (SCRFD detector, ArcFace recognizer, genderage) are small and run sequentially per frame — past ~4 threads, thread-scheduling/synchronization overhead per inference call outweighs the extra parallelism, and `ORT_PARALLEL` + high `inter_op_num_threads` makes it worse since these models have no independent parallel branches to exploit. If you're tempted to "use all cores" for CPU speed here, don't — re-run a benchmark like the one above on the target machine first; the optimal thread count depends on model size, not core count, and can be *worse than the default* if set too high.
 
 ### Live per-video progress (SSE)
 

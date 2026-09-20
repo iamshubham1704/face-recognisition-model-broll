@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import os
 import shutil
 import time
 import uuid
@@ -18,9 +19,11 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 try:
+    import onnxruntime
     from insightface.app import FaceAnalysis
     INSIGHTFACE_AVAILABLE = True
 except ImportError:
+    onnxruntime = None
     FaceAnalysis = None
     INSIGHTFACE_AVAILABLE = False
 
@@ -40,7 +43,21 @@ face_app: "FaceAnalysis | None" = None
 def _load_model() -> None:
     global face_app
     if INSIGHTFACE_AVAILABLE and face_app is None:
-        fa = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
+        # buffalo_l's per-model compute graphs are small enough that thread
+        # count is a U-shaped curve, not "more is faster": benchmarked on this
+        # machine (16 logical cores) against real video frames, 1 thread was
+        # 1572ms/frame, 4 threads was the minimum at 455ms/frame, and pinning
+        # all 16 cores (ORT_PARALLEL, intra=inter=cores) was *slower* than the
+        # untouched default at 1387ms/frame — thread-scheduling overhead per
+        # inference call dominates once you're past ~4 threads for a model
+        # this size. Re-benchmark (see git history) before changing this
+        # constant instead of guessing.
+        sess_opts = onnxruntime.SessionOptions()
+        sess_opts.intra_op_num_threads = min(4, os.cpu_count() or 4)
+        sess_opts.inter_op_num_threads = 1
+        sess_opts.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
+
+        fa = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"], sess_options=sess_opts)
         fa.prepare(ctx_id=0, det_size=(640, 640))
         face_app = fa
 
@@ -116,11 +133,15 @@ def _frame_to_png_b64(frame: np.ndarray) -> str:
 
 # ─── Shared request handling ──────────────────────────────────────────────────
 
-def _clamp_params(threshold: float, sample_every: int, det_conf: float) -> tuple[float, int, float]:
-    threshold    = max(0.25, min(float(threshold),    0.90))
-    sample_every = max(1,    min(int(sample_every),    30))
-    det_conf     = max(0.30, min(float(det_conf),     0.95))
-    return threshold, sample_every, det_conf
+def _clamp_params(threshold: float, scan_fps: float, det_conf: float) -> tuple[float, float, float]:
+    threshold = max(0.25, min(float(threshold), 0.90))
+    # CPU-bound detection is the bottleneck; analyzing every frame of a 30/60fps
+    # video is far more than needed to catch a person's appearance and was the
+    # main source of slow scans. Cap the actual analysis rate to 1-4 frames per
+    # second of *video time*, independent of the source video's native fps.
+    scan_fps  = max(1.0, min(float(scan_fps), 4.0))
+    det_conf  = max(0.30, min(float(det_conf), 0.95))
+    return threshold, scan_fps, det_conf
 
 
 def _save_job_uploads(
@@ -183,7 +204,7 @@ async def analyze_stream(
     references:      Annotated[list[UploadFile], File()],
     videos:          Annotated[list[UploadFile], File()],
     threshold:       Annotated[float, Form()] = 0.50,
-    sample_every:    Annotated[int,   Form()] = 2,
+    scan_fps:        Annotated[float, Form()] = 2.0,
     max_thumbs:      Annotated[int,   Form()] = 30,
     det_conf:        Annotated[float, Form()] = 0.70,
     use_gender:      Annotated[int,   Form()] = 1,
@@ -196,7 +217,7 @@ async def analyze_stream(
         raise HTTPException(400, "Every character row needs a name.")
     if not videos:
         raise HTTPException(400, "Upload at least one video.")
-    threshold, sample_every, det_conf = _clamp_params(threshold, sample_every, det_conf)
+    threshold, scan_fps, det_conf = _clamp_params(threshold, scan_fps, det_conf)
 
     job_id = uuid.uuid4().hex
     ref_entries, video_paths = _save_job_uploads(job_id, references, character_names, videos)
@@ -238,7 +259,7 @@ async def analyze_stream(
             task = loop.run_in_executor(
                 None, _process_video,
                 vp, vn, ref_ids, job_id, idx,
-                threshold, sample_every, max_thumbs, det_conf, bool(use_gender),
+                threshold, scan_fps, max_thumbs, det_conf, bool(use_gender),
                 progress_cb,
             )
 
@@ -285,7 +306,7 @@ async def analyze(
     references:      Annotated[list[UploadFile], File()],
     videos:          Annotated[list[UploadFile], File()],
     threshold:       Annotated[float, Form()] = 0.50,
-    sample_every:    Annotated[int,   Form()] = 2,
+    scan_fps:        Annotated[float, Form()] = 2.0,
     max_thumbs:      Annotated[int,   Form()] = 30,
     det_conf:        Annotated[float, Form()] = 0.70,
     use_gender:      Annotated[int,   Form()] = 1,
@@ -298,7 +319,7 @@ async def analyze(
         raise HTTPException(400, "Every character row needs a name.")
     if not videos:
         raise HTTPException(400, "Upload at least one video.")
-    threshold, sample_every, det_conf = _clamp_params(threshold, sample_every, det_conf)
+    threshold, scan_fps, det_conf = _clamp_params(threshold, scan_fps, det_conf)
 
     job_id = uuid.uuid4().hex
     ref_entries, video_paths = _save_job_uploads(job_id, references, character_names, videos)
@@ -306,12 +327,12 @@ async def analyze(
 
     results = [
         _process_video(vp, vn, ref_ids, job_id, i,
-                        threshold, sample_every, max_thumbs, det_conf, bool(use_gender))
+                        threshold, scan_fps, max_thumbs, det_conf, bool(use_gender))
         for i, (vp, vn) in enumerate(video_paths)
     ]
     return {
         "jobId": job_id, "characterNames": [n for _, n in ref_entries],
-        "threshold": threshold, "sampleEvery": sample_every,
+        "threshold": threshold, "scanFps": scan_fps,
         "videos": results, "totalMatches": sum(r["matchCount"] for r in results),
     }
 
@@ -325,7 +346,7 @@ def _process_video(
     job_id:       str,
     vid_idx:      int,
     threshold:    float = 0.50,
-    sample_every: int   = 2,
+    scan_fps:     float = 2.0,
     max_thumbs:   int   = 30,
     det_conf:     float = 0.70,
     use_gender:   bool  = True,
@@ -342,6 +363,14 @@ def _process_video(
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     width        = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)  or 640)
     height       = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 480)
+
+    # Analyze at a fixed rate of video-time (scan_fps, 1-4 frames/sec), not a
+    # fixed frame-count interval — a 60fps video and a 24fps video both get
+    # sampled about `scan_fps` times per second of footage. This is what keeps
+    # CPU-bound detection cost bounded regardless of the source video's native
+    # frame rate, instead of e.g. "every 2nd frame" silently meaning 30/sec on
+    # a 60fps clip.
+    frame_step = max(1, round(fps / scan_fps))
 
     out_name = f"{job_id}_{vid_idx}_out.mp4"
     writer   = cv2.VideoWriter(
@@ -373,7 +402,7 @@ def _process_video(
                 break
 
             current: list[list[tuple[np.ndarray, float]]] = [[] for _ in range(n_chars)]
-            sampled = frame_idx % sample_every == 0
+            sampled = frame_idx % frame_step == 0
 
             if sampled:
                 frames_scanned += 1
