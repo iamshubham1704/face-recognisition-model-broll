@@ -22,7 +22,7 @@
     <section class="hero">
       <p class="eyebrow">IDENTITY SEARCH / 01</p>
       <h1>Find the face.<br><em>Follow the story.</em></h1>
-      <p class="lede">Drop a reference photo and your footage. ArcTrace uses ArcFace embeddings to find the same person across every cut — clothing-independent, frame by frame.</p>
+      <p class="lede">Drop one or more reference photos and your footage. ArcTrace uses ArcFace embeddings to find each person across every cut — clothing-independent, frame by frame.</p>
     </section>
 
     <!-- ───── Form ───── -->
@@ -32,18 +32,19 @@
         <!-- Reference panel -->
         <div class="panel reference-panel">
           <div class="panel-heading"><span class="step">01</span>
-            <div><h2>Reference identity</h2><p>One clear face, front or three-quarter view.</p></div>
+            <div><h2>Reference identities</h2><p>One clear face per character — add as many as you want to search for.</p></div>
           </div>
-          <label class="dropzone reference-drop" for="reference" id="ref-drop-label">
-            <input id="reference" name="reference" type="file" accept="image/*" required>
-            <div id="reference-preview" class="upload-placeholder">
-              <span class="plus">+</span>
-              <strong>Drop a portrait here</strong>
-              <span>JPG, PNG or WEBP</span>
+          <div id="character-list" class="character-list">
+            <div class="character-row">
+              <label class="char-photo-drop">
+                <input type="file" name="references" accept="image/*" required>
+                <span class="char-photo-placeholder">+</span>
+              </label>
+              <input class="text-input char-name-input" type="text" name="character_names" placeholder="Character or actor name" required>
+              <button type="button" class="remove-character-btn hidden" aria-label="Remove character">×</button>
             </div>
-          </label>
-          <label class="field-label" for="character-name">CHARACTER OR ACTOR NAME</label>
-          <input class="text-input" id="character-name" name="character_name" placeholder="e.g. Maya Chen" required>
+          </div>
+          <button type="button" id="add-character-btn" class="add-character-btn">+ Add another character</button>
         </div>
 
         <!-- Footage panel -->

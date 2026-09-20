@@ -1,13 +1,13 @@
 # ArcTrace 🎯
 
-**Face identity search across video** — upload a reference photo, drop in your footage, and ArcTrace finds every frame where that face appears (independent of clothing/outfit, since only the face is compared).
+**Face identity search across video** — upload one or more reference photos, drop in your footage, and ArcTrace finds every frame where each person appears (independent of clothing/outfit, since only the face is compared).
 
 ## What it does
 
-- 📸 Takes **one reference photo** of any person / character
-- 🎬 Scans video frame-by-frame using face-recognition embeddings
-- 🟢 Draws bounding boxes + confidence scores on matched frames
-- 🖼️ Shows **full-resolution, lossless face-crop thumbnails** for every match point
+- 📸 Takes **one or more reference photos**, one per character/actor — search for several people in the same run
+- 🎬 Scans video frame-by-frame using face-recognition embeddings (face detection runs once per frame regardless of character count; only the cheap similarity check repeats per character)
+- 🟢 Draws bounding boxes + confidence scores on matched frames, one color per character
+- 🖼️ Shows **one full-resolution, lossless, whole-frame thumbnail per character** — the single highest-confidence match, never a face-only crop or a gallery of every hit
 - ⬇️ Lets you download the **annotated video**
 
 ## Stack
@@ -41,9 +41,10 @@ run.bat
   progress (percentage + frame count) so long videos don't look frozen mid-scan
 - Live thumbnail strip appearing as matches are found
 - Animated progress bar
-- Stats dashboard (total matches, frames scanned, duration)
-- Annotated video download with labelled bounding boxes
-- Face-crop thumbnails kept at native size/aspect ratio and encoded as lossless PNG — no stretching, no compression artifacts
+- Stats dashboard (total matches, characters, frames scanned, duration)
+- Annotated video download with labelled, color-coded bounding boxes per character
+- Search for multiple characters at once — add as many reference photo + name rows as you need
+- Thumbnails are the whole video frame (not a face crop), kept at native resolution and encoded as lossless PNG — no stretching, no compression artifacts
 
 ## Settings
 

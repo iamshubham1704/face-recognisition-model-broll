@@ -1,6 +1,9 @@
 # Virtual environment
 .venv/
 
+# Claude Code local tooling state
+.claude/
+
 # Python
 __pycache__/
 *.pyc

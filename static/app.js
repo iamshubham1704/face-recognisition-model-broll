@@ -2,28 +2,27 @@
 'use strict';
 
 // ── DOM refs ──
-const form          = document.querySelector('#analysis-form');
-const refInput      = document.querySelector('#reference');
-const refDrop       = document.querySelector('.reference-drop');
-const refPreview    = document.querySelector('#reference-preview');
-const videosInput   = document.querySelector('#videos');
-const fileList      = document.querySelector('#file-list');
-const thresholdEl   = document.querySelector('#threshold');
-const thresholdVal  = document.querySelector('#threshold-value');
-const sampleEvery   = document.querySelector('#sample-every');
-const sampleVal     = document.querySelector('#sample-value');
-const detConfEl     = document.querySelector('#det-conf');
-const detConfVal    = document.querySelector('#det-conf-value');
-const progressSec   = document.querySelector('#progress');
-const progressTitle = document.querySelector('#progress-title');
-const progressText  = document.querySelector('#progress-text');
-const progressBar   = document.querySelector('#progress-bar');
-const liveThumbs    = document.querySelector('#live-thumbs');
-const errorSec      = document.querySelector('#error');
-const resultsSec    = document.querySelector('#results');
-const analyzeBtn    = document.querySelector('#analyze-button');
-const statusDot     = document.querySelector('#status-dot');
-const statusText    = document.querySelector('#status-text');
+const form            = document.querySelector('#analysis-form');
+const characterList   = document.querySelector('#character-list');
+const addCharacterBtn = document.querySelector('#add-character-btn');
+const videosInput     = document.querySelector('#videos');
+const fileList        = document.querySelector('#file-list');
+const thresholdEl     = document.querySelector('#threshold');
+const thresholdVal    = document.querySelector('#threshold-value');
+const sampleEvery     = document.querySelector('#sample-every');
+const sampleVal       = document.querySelector('#sample-value');
+const detConfEl       = document.querySelector('#det-conf');
+const detConfVal      = document.querySelector('#det-conf-value');
+const progressSec     = document.querySelector('#progress');
+const progressTitle   = document.querySelector('#progress-title');
+const progressText    = document.querySelector('#progress-text');
+const progressBar     = document.querySelector('#progress-bar');
+const liveThumbs      = document.querySelector('#live-thumbs');
+const errorSec        = document.querySelector('#error');
+const resultsSec      = document.querySelector('#results');
+const analyzeBtn      = document.querySelector('#analyze-button');
+const statusDot       = document.querySelector('#status-dot');
+const statusText      = document.querySelector('#status-text');
 
 // ── Sliders ──
 thresholdEl.addEventListener('input', () => {
@@ -37,24 +36,64 @@ detConfEl.addEventListener('input', () => {
   detConfVal.textContent = parseFloat(detConfEl.value).toFixed(2);
 });
 
-// ── Reference image preview ──
-refInput.addEventListener('change', () => {
-  const file = refInput.files[0];
-  if (!file) return;
-  const url = URL.createObjectURL(file);
-  refDrop.style.backgroundImage = `url(${url})`;
-  refDrop.classList.add('has-image');
-  refPreview.innerHTML = '<strong>Reference loaded · click to replace</strong>';
+// ── Multi-character reference list ──
+function wireCharacterRow(row) {
+  const photoInput = row.querySelector('input[type=file]');
+  const photoDrop  = row.querySelector('.char-photo-drop');
+  const removeBtn  = row.querySelector('.remove-character-btn');
+
+  photoInput.addEventListener('change', () => {
+    const file = photoInput.files[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    photoDrop.style.backgroundImage = `url(${url})`;
+    photoDrop.classList.add('has-image');
+  });
+
+  ['dragover', 'dragenter'].forEach(ev => {
+    photoDrop.addEventListener(ev, e => { e.preventDefault(); photoDrop.style.borderColor = 'var(--rust)'; });
+  });
+  ['dragleave', 'drop'].forEach(ev => {
+    photoDrop.addEventListener(ev, () => { photoDrop.style.borderColor = ''; });
+  });
+
+  removeBtn.addEventListener('click', () => {
+    if (document.querySelectorAll('.character-row').length <= 1) return;
+    row.remove();
+    updateRemoveButtons();
+  });
+}
+
+function updateRemoveButtons() {
+  const rows = document.querySelectorAll('.character-row');
+  rows.forEach(row => {
+    row.querySelector('.remove-character-btn').classList.toggle('hidden', rows.length <= 1);
+  });
+}
+
+// Wire the initial row present in the HTML.
+document.querySelectorAll('.character-row').forEach(wireCharacterRow);
+
+addCharacterBtn.addEventListener('click', () => {
+  const template = document.querySelector('.character-row');
+  const row = template.cloneNode(true);
+  row.querySelector('input[type=file]').value = '';
+  row.querySelector('.char-name-input').value = '';
+  row.querySelector('.char-photo-drop').classList.remove('has-image');
+  row.querySelector('.char-photo-drop').style.backgroundImage = '';
+  characterList.appendChild(row);
+  wireCharacterRow(row);
+  updateRemoveButtons();
 });
 
-// Drag-and-drop highlight
+// Drag-and-drop highlight for the video dropzone.
 ['dragover', 'dragenter'].forEach(ev => {
-  document.querySelectorAll('.dropzone').forEach(el => {
+  document.querySelectorAll('.video-drop').forEach(el => {
     el.addEventListener(ev, e => { e.preventDefault(); el.style.borderColor = 'var(--rust)'; });
   });
 });
 ['dragleave', 'drop'].forEach(ev => {
-  document.querySelectorAll('.dropzone').forEach(el => {
+  document.querySelectorAll('.video-drop').forEach(el => {
     el.addEventListener(ev, () => { el.style.borderColor = ''; });
   });
 });
@@ -89,12 +128,13 @@ function setProgress(pct, title, detail) {
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
 
-  const name    = document.querySelector('#character-name').value.trim();
-  const refFile = refInput.files[0];
-  const vidFiles= videosInput.files;
+  const rows     = [...document.querySelectorAll('.character-row')];
+  const vidFiles = videosInput.files;
+  const incompleteRow = rows.find(row =>
+    !row.querySelector('input[type=file]').files[0] || !row.querySelector('.char-name-input').value.trim());
 
-  if (!name || !refFile || !vidFiles.length) {
-    showError('Please fill in the character name, reference photo, and at least one video.');
+  if (incompleteRow || !vidFiles.length) {
+    showError('Please fill in a photo and name for every character row, and add at least one video.');
     return;
   }
 
@@ -106,9 +146,11 @@ form.addEventListener('submit', async (e) => {
   progressBar.style.width = '0%';
   analyzeBtn.disabled = true;
   setStatus('busy', 'ANALYZING');
-  setProgress(0, 'Starting analysis…', 'Building ArcFace embedding for reference identity…');
+  setProgress(0, 'Starting analysis…', 'Building ArcFace embeddings for reference identities…');
 
-  // Build FormData – manually handle checkbox so unchecked still sends 0
+  // FormData auto-collects every `references` file input and `character_names`
+  // text input in DOM order (multiple same-name inputs, not a single multi-file
+  // input), so row N's photo pairs with row N's name without any manual work here.
   const body = new FormData(form);
   const genderCheckbox = document.querySelector('#use-gender');
   // FormData only includes checked checkboxes; force-set correct value
@@ -146,10 +188,12 @@ form.addEventListener('submit', async (e) => {
         try { payload = JSON.parse(dataMatch[1].trim()); } catch { continue; }
 
         switch (event) {
-          case 'start':
+          case 'start': {
             totalVideos = payload.videoCount || 1;
-            setProgress(.05, `Searching for ${esc(payload.characterName)}…`, 'Reference embedding ready.');
+            const names = (payload.characterNames || []).join(', ');
+            setProgress(.05, `Searching for ${esc(names)}…`, 'Building reference embeddings.');
             break;
+          }
 
           case 'video_start':
             setProgress(
@@ -169,23 +213,26 @@ form.addEventListener('submit', async (e) => {
             break;
           }
 
-          case 'video_done':
+          case 'video_done': {
             doneVideos++;
             setProgress(
               .1 + (doneVideos / totalVideos) * .85,
               `Scanned ${doneVideos} / ${totalVideos} videos`,
               `${payload.matchCount} match${payload.matchCount !== 1 ? 'es' : ''} found in ${esc(payload.name)}`
             );
-            // Show live thumbnails
-            (payload.thumbnails || []).forEach(thumb => {
-              if (!thumb.thumbnail) return;
-              const div = document.createElement('div');
-              div.className = 'live-thumb';
-              div.innerHTML = `<img src="data:image/jpeg;base64,${thumb.thumbnail}" loading="lazy" alt="${thumb.time}">
-                               <div class="thumb-score">${thumb.time}</div>`;
-              liveThumbs.appendChild(div);
+            // Show live thumbnails — one per character that had a match in this video
+            (payload.characters || []).forEach(char => {
+              (char.thumbnails || []).forEach(thumb => {
+                if (!thumb.thumbnail) return;
+                const div = document.createElement('div');
+                div.className = 'live-thumb';
+                div.innerHTML = `<img src="data:image/png;base64,${thumb.thumbnail}" loading="lazy" alt="${char.name} @ ${thumb.time}">
+                                 <div class="thumb-score">${esc(char.name)} · ${thumb.time}</div>`;
+                liveThumbs.appendChild(div);
+              });
             });
             break;
+          }
 
           case 'video_error':
             showError(`Video ${esc(payload.name)}: ${esc(payload.message)}`);
@@ -229,10 +276,12 @@ function showError(msg) {
 function renderResults(data) {
   const totalSec = data.videos.reduce((a, v) => a + v.duration, 0);
   const totalFrames = data.videos.reduce((a, v) => a + v.framesScanned, 0);
+  const names = (data.characterNames || []).join(', ');
 
   const statsHtml = `
     <div class="stats-row">
       <div class="stat-box"><div class="stat-value">${data.totalMatches}</div><div class="stat-label">MATCH POINTS</div></div>
+      <div class="stat-box"><div class="stat-value">${(data.characterNames || []).length}</div><div class="stat-label">CHARACTERS</div></div>
       <div class="stat-box"><div class="stat-value">${data.videos.length}</div><div class="stat-label">VIDEOS SCANNED</div></div>
       <div class="stat-box"><div class="stat-value">${totalFrames.toLocaleString()}</div><div class="stat-label">FRAMES CHECKED</div></div>
       <div class="stat-box"><div class="stat-value">${fmtDur(totalSec)}</div><div class="stat-label">TOTAL DURATION</div></div>
@@ -244,9 +293,9 @@ function renderResults(data) {
     <div class="result-header">
       <div>
         <p class="eyebrow">SEARCH COMPLETE</p>
-        <h2>${esc(data.characterName)}</h2>
+        <h2>${esc(names)}</h2>
       </div>
-      <div class="meta">Threshold ${data.threshold ?? 0.42} · Every ${data.sampleEvery ?? 5} frames</div>
+      <div class="meta">Threshold ${data.threshold ?? 0.50} · Every ${data.sampleEvery ?? 2} frames</div>
     </div>
     ${statsHtml}
     ${cards}`;
@@ -257,20 +306,7 @@ function renderResults(data) {
 
 function renderVideoCard(video) {
   const matchBadge = `<span class="badge-count">${video.matchCount} match${video.matchCount !== 1 ? 'es' : ''}</span>`;
-
-  const chipsHtml = video.detections.length
-    ? `<div class="chips">${video.detections.map(h => `<span class="chip" title="${h.score}">${h.time} · ${Math.round(h.score * 100)}%</span>`).join('')}</div>`
-    : '<p class="empty">No confident matches found in sampled frames.</p>';
-
-  const thumbsHtml = (video.thumbnails || []).filter(t => t.thumbnail).map(t => `
-    <div class="gallery-thumb" title="${t.time} — ${Math.round(t.score * 100)}%">
-      <img src="data:image/jpeg;base64,${t.thumbnail}" loading="lazy" alt="${t.time}">
-      <div class="gt-overlay">${t.time}</div>
-    </div>`).join('');
-
-  const gallerySection = thumbsHtml
-    ? `<div class="thumb-gallery">${thumbsHtml}</div>`
-    : '';
+  const charactersHtml = (video.characters || []).map(renderCharacterSection).join('');
 
   return `
     <article class="result-card">
@@ -284,12 +320,33 @@ function renderVideoCard(video) {
           <a class="download-btn" href="${esc(video.videoUrl)}" download>↓ DOWNLOAD MARKED VIDEO</a>
         </div>
       </div>
+      ${charactersHtml}
+    </article>`;
+}
+
+function renderCharacterSection(char) {
+  const chipsHtml = char.detections.length
+    ? `<div class="chips">${char.detections.map(h => `<span class="chip" title="${h.score}">${h.time} · ${Math.round(h.score * 100)}%</span>`).join('')}</div>`
+    : '<p class="empty">No confident matches found in sampled frames.</p>';
+
+  const thumbsHtml = (char.thumbnails || []).filter(t => t.thumbnail).map(t => `
+    <div class="gallery-thumb" title="${char.name} — ${t.time} — ${Math.round(t.score * 100)}%">
+      <img src="data:image/png;base64,${t.thumbnail}" loading="lazy" alt="${char.name} @ ${t.time}">
+      <div class="gt-overlay">${esc(char.name)} · ${t.time}</div>
+    </div>`).join('');
+
+  const gallerySection = thumbsHtml
+    ? `<div class="thumb-gallery">${thumbsHtml}</div>`
+    : '';
+
+  return `
+    <div class="character-section">
       <div class="timeline-section">
-        <p class="timeline-label">MATCH TIMESTAMPS</p>
+        <p class="timeline-label">${esc(char.name).toUpperCase()} · ${char.matchCount} match${char.matchCount !== 1 ? 'es' : ''}</p>
         ${chipsHtml}
       </div>
       ${gallerySection}
-    </article>`;
+    </div>`;
 }
 
 function fmtDur(sec) {
