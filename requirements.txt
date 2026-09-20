@@ -1,0 +1,21 @@
+# ── ArcTrace – Python dependencies ──
+
+# Streamlit UI
+streamlit==1.49.1
+
+# ArcFace via DeepFace (Streamlit app)
+deepface==0.0.93
+tf-keras==2.21.0
+
+# ArcFace via InsightFace (FastAPI app)
+insightface>=0.7.3
+onnxruntime>=1.18.0
+
+# FastAPI server
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+
+# Computer vision
+opencv-python==4.11.0.86
+numpy>=1.26,<3

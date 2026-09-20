@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArcTrace | Find a face across video</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css?v=4">
+</head>
+<body>
+  <main class="shell">
+
+    <!-- ───── Top bar ───── -->
+    <header class="topbar">
+      <a class="brand" href="/"><span class="brand-mark">A</span><span>ARCTRACE</span></a>
+      <div class="status" id="status-bar"><span class="status-dot" id="status-dot"></span><span id="status-text">READY</span></div>
+    </header>
+
+    <!-- ───── Hero ───── -->
+    <section class="hero">
+      <p class="eyebrow">IDENTITY SEARCH / 01</p>
+      <h1>Find the face.<br><em>Follow the story.</em></h1>
+      <p class="lede">Drop a reference photo and your footage. ArcTrace uses ArcFace embeddings to find the same person across every cut — clothing-independent, frame by frame.</p>
+    </section>
+
+    <!-- ───── Form ───── -->
+    <form id="analysis-form" novalidate>
+      <section class="workspace-grid">
+
+        <!-- Reference panel -->
+        <div class="panel reference-panel">
+          <div class="panel-heading"><span class="step">01</span>
+            <div><h2>Reference identity</h2><p>One clear face, front or three-quarter view.</p></div>
+          </div>
+          <label class="dropzone reference-drop" for="reference" id="ref-drop-label">
+            <input id="reference" name="reference" type="file" accept="image/*" required>
+            <div id="reference-preview" class="upload-placeholder">
+              <span class="plus">+</span>
+              <strong>Drop a portrait here</strong>
+              <span>JPG, PNG or WEBP</span>
+            </div>
+          </label>
+          <label class="field-label" for="character-name">CHARACTER OR ACTOR NAME</label>
+          <input class="text-input" id="character-name" name="character_name" placeholder="e.g. Maya Chen" required>
+        </div>
+
+        <!-- Footage panel -->
+        <div class="panel footage-panel">
+          <div class="panel-heading"><span class="step">02</span>
+            <div><h2>Video footage</h2><p>Search one file or your whole batch.</p></div>
+          </div>
+          <label class="dropzone video-drop" for="videos">
+            <input id="videos" name="videos" type="file" accept="video/*" multiple required>
+            <div class="upload-placeholder">
+              <span class="plus">+</span>
+              <strong>Drop video files here</strong>
+              <span>MP4, MOV, AVI or MKV · multiple allowed</span>
+            </div>
+          </label>
+          <div id="file-list" class="file-list"><span>No footage selected</span></div>
+        </div>
+
+      </section>
+
+      <!-- Controls -->
+      <section class="controls-row">
+        <div class="control">
+          <label for="threshold">MATCH SENSITIVITY <output id="threshold-value">0.50</output></label>
+          <input id="threshold" name="threshold" type="range" min="0.25" max="0.85" step="0.01" value="0.50">
+          <p class="hint">Higher = stricter (fewer false positives). Lower = more matches.</p>
+        </div>
+        <div class="control">
+          <label for="sample-every">SCAN EVERY <output id="sample-value">2 frames</output></label>
+          <input id="sample-every" name="sample_every" type="range" min="1" max="15" step="1" value="2">
+          <p class="hint">1 = every frame (most accurate). Higher = faster, may miss some.</p>
+        </div>
+        <div class="control">
+          <label for="det-conf">FACE DETECT CONF <output id="det-conf-value">0.70</output></label>
+          <input id="det-conf" name="det_conf" type="range" min="0.30" max="0.95" step="0.05" value="0.70">
+          <p class="hint">Min detection confidence. Higher = reject uncertain faces.</p>
+        </div>
+        <div class="control-check">
+          <label class="toggle-label">
+            <input type="checkbox" id="use-gender" name="use_gender" value="1" checked>
+            <span class="toggle-box"></span>
+            <span>GENDER FILTER <span class="toggle-sub">Blocks opposite-gender false positives</span></span>
+          </label>
+        </div>
+        <button class="analyze-button" id="analyze-button" type="submit">
+          <span>Run identity search</span><span class="arrow">↗</span>
+        </button>
+      </section>
+    </form>
+
+    <!-- ───── Progress ───── -->
+    <section id="progress" class="progress-panel hidden">
+      <div class="progress-inner">
+        <div class="spinner"></div>
+        <div>
+          <strong id="progress-title">Detecting faces…</strong>
+          <p id="progress-text">Comparing ArcFace embeddings across frames…</p>
+        </div>
+      </div>
+      <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+      <div id="live-thumbs" class="live-thumbs"></div>
+    </section>
+
+    <!-- ───── Error ───── -->
+    <section id="error" class="error-panel hidden"></section>
+
+    <!-- ───── Results ───── -->
+    <section id="results" class="results hidden"></section>
+
+    <footer>
+      <span>ARCFACE / INSIGHTFACE · BUFFALO_L MODEL</span>
+      <span>PRIVATE BY DEFAULT · PROCESSED LOCALLY</span>
+    </footer>
+  </main>
+
+  <script src="/static/app.js?v=4"></script>
+</body>
+</html>

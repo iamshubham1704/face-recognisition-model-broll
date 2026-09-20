@@ -1,0 +1,14 @@
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Runtime data (uploaded reference photos/videos, rendered outputs) — never commit user media
+data/uploads/*
+data/outputs/*
+data/thumbnails/*
+!data/uploads/.gitkeep
+!data/outputs/.gitkeep
+!data/thumbnails/.gitkeep
